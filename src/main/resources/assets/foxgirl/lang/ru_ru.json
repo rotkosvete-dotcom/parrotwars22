@@ -1,0 +1,11 @@
+{
+  "itemGroup.foxgirl": "Лисичка",
+  "entity.foxgirl.fox_girl": "Лисичка",
+  "item.foxgirl.fox_girl_spawn_egg": "Яйцо призыва лисички",
+  "item.foxgirl.almond_water": "Миндальная вода",
+  "message.foxgirl.tamed": "Лисичка тебе доверяет!",
+  "message.foxgirl.hungry": "Твоя лисичка голодна! Покорми её.",
+  "message.foxgirl.sit": "Она сидит и ждёт.",
+  "message.foxgirl.follow": "Она идёт за тобой.",
+  "message.foxgirl.no_dimension": "Измерение Закулисья не найдено."
+}

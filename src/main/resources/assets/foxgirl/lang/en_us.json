@@ -1,0 +1,11 @@
+{
+  "itemGroup.foxgirl": "Fox Girl",
+  "entity.foxgirl.fox_girl": "Fox Girl",
+  "item.foxgirl.fox_girl_spawn_egg": "Fox Girl Spawn Egg",
+  "item.foxgirl.almond_water": "Almond Water",
+  "message.foxgirl.tamed": "The Fox Girl trusts you now!",
+  "message.foxgirl.hungry": "Your Fox Girl is starving! Feed her.",
+  "message.foxgirl.sit": "She sits and waits.",
+  "message.foxgirl.follow": "She follows you.",
+  "message.foxgirl.no_dimension": "The Backrooms dimension was not found."
+}
