@@ -7,9 +7,5 @@
   "message.foxgirl.hungry": "Your Furritian is starving! Feed her.",
   "message.foxgirl.sit": "She sits and waits.",
   "message.foxgirl.follow": "She follows you.",
-  "message.foxgirl.size_auto": "Size: automatic",
-  "message.foxgirl.size_small": "Size: small",
-  "message.foxgirl.size_normal": "Size: normal",
-  "message.foxgirl.size_big": "Size: big",
   "message.foxgirl.no_dimension": "The Backrooms dimension was not found."
 }

@@ -40,7 +40,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.UUID;
 
@@ -49,8 +51,8 @@ import java.util.UUID;
  *  - Приручается едой (шанс 1/3 за кормление).
  *  - Сытость: пока сыта — помогает, голодная — слабеет и не помогает.
  *  - Защищает хозяина, лечит его, ночью подсвечивает монстров.
- *  - РАЗМЕР: умеет уменьшаться (в опасности/в тесноте) и увеличиваться (в бою).
- *    Shift + ПКМ пустой рукой по ней — режим: авто / маленькая / обычная / большая.
+ *  - РАЗМЕР (сама, без команд игрока): уменьшается, чтобы протиснуться в узкий/низкий проход
+ *    или спрятаться (мало здоровья, рядом крипер); увеличивается, чтобы перешагнуть уступ и в бою.
  *  - ХВОСТ: отдельное оружие — мощный размашистый удар по площади с отбрасыванием.
  *  - ПКМ пустой рукой — сесть / идти следом.
  */
@@ -67,7 +69,7 @@ public class FoxGirlEntity extends TamableAnimal {
 	private static final UUID BIG_DAMAGE_ID = UUID.fromString("5b7f6a40-2d1c-4a77-9a50-0c4f0a1b9e11");
 
 	private int hunger = 12;
-	private int sizeMode = -1;     // -1 авто, 0/1/2 — зафиксированный размер
+	private int sizeHold = 0;      // сколько тиков держать размер, чтобы не дёргалась
 	private int tailCooldown = 0;
 	private int tailSwing = 0;     // для анимации (клиент)
 	private float renderScale = 1f;
@@ -154,6 +156,8 @@ public class FoxGirlEntity extends TamableAnimal {
 		this.entityData.set(SIZE_STATE, target);
 		this.refreshDimensions();
 
+		this.setMaxUpStep(target == 2 ? 1.25f : 0.6f); // большая перешагивает блок
+
 		AttributeInstance dmg = this.getAttribute(Attributes.ATTACK_DAMAGE);
 		if (dmg != null) {
 			dmg.removeModifier(BIG_DAMAGE_ID);
@@ -165,21 +169,54 @@ public class FoxGirlEntity extends TamableAnimal {
 		this.playSound(SoundEvents.AMETHYST_BLOCK_CHIME, 1.0f, target > current ? 0.7f : 1.5f);
 	}
 
+	/**
+	 * Смотрит, что мешает пройти вперёд (куда она идёт по пути).
+	 * 0 = надо стать маленькой (проход узкий/низкий), 2 = надо стать большой (перешагнуть блок), 1 = всё ок.
+	 */
+	private int obstacleAhead() {
+		if (!this.getNavigation().isInProgress()) return 1;
+		Path path = this.getNavigation().getPath();
+		if (path == null) return 1;
+		Vec3 dest = path.getNextEntityPos(this);
+		double dx = dest.x - this.getX(), dz = dest.z - this.getZ();
+		double len = Math.sqrt(dx * dx + dz * dz);
+		if (len < 0.1) return 1;
+		dx = dx / len * 0.9;
+		dz = dz / len * 0.9;
+
+		AABB ahead = this.getBoundingBox().move(dx, 0, dz);
+		if (this.level().noCollision(this, ahead)) return 1; // дорога свободна
+
+		// Пролезет, если станет маленькой?
+		EntityDimensions small = this.getType().getDimensions().scale(SCALES[0]);
+		if (this.level().noCollision(this, small.makeBoundingBox(this.position().add(dx, 0, dz)))) return 0;
+
+		// Перед ней уступ в 1 блок — большая просто перешагнёт
+		if (this.level().noCollision(this, ahead.move(0, 1.0, 0))) return 2;
+		return 1;
+	}
+
+	/** Размер выбирает сама Фурритян — по ситуации. */
 	private void updateSize() {
-		int want;
-		if (this.sizeMode >= 0) {
-			want = this.sizeMode;
+		if (this.sizeHold > 0) { this.sizeHold -= 10; return; }
+
+		int want = 1;
+		int hold = 0;
+		LivingEntity t = this.getTarget();
+		boolean lowHealth = this.getHealth() < this.getMaxHealth() * 0.3f;
+		boolean creeperNear = !this.level().getEntitiesOfClass(Creeper.class, this.getBoundingBox().inflate(8.0)).isEmpty();
+
+		if (lowHealth || creeperNear) {                  // прячется
+			want = 0; hold = 60;
 		} else {
-			LivingEntity t = this.getTarget();
-			boolean lowHealth = this.getHealth() < this.getMaxHealth() * 0.3f;
-			boolean creeperNear = !this.level().getEntitiesOfClass(Creeper.class, this.getBoundingBox().inflate(8.0)).isEmpty();
-			boolean stuck = t == null && this.getNavigation().isStuck();
-			if (lowHealth || creeperNear || stuck) want = 0;              // спряталась / пролезла в щель
-			else if (t != null && t.isAlive()) want = 2;                  // в бою — большая
-			else want = 1;
+			int obstacle = this.obstacleAhead();
+			if (obstacle == 0) { want = 0; hold = 80; }  // протиснуться в узкий проход
+			else if (obstacle == 2) { want = 2; hold = 80; } // перешагнуть через уступ
+			else if (t != null && t.isAlive()) want = 2; // в бою — большая
 		}
 		while (want > this.getSizeState() && !this.canFit(want)) want--;
 		this.setSizeState(want);
+		this.sizeHold = hold;
 	}
 
 	// ---------- хвост ----------
@@ -250,22 +287,6 @@ public class FoxGirlEntity extends TamableAnimal {
 		}
 
 		boolean owner = this.isTame() && this.isOwnedBy(player) && hand == InteractionHand.MAIN_HAND && stack.isEmpty();
-
-		// Shift + ПКМ — режим размера: авто -> маленькая -> обычная -> большая -> авто
-		if (owner && player.isShiftKeyDown()) {
-			if (!this.level().isClientSide) {
-				this.sizeMode = this.sizeMode >= 2 ? -1 : this.sizeMode + 1;
-				String key = switch (this.sizeMode) {
-					case 0 -> "message.foxgirl.size_small";
-					case 1 -> "message.foxgirl.size_normal";
-					case 2 -> "message.foxgirl.size_big";
-					default -> "message.foxgirl.size_auto";
-				};
-				player.displayClientMessage(Component.translatable(key), true);
-				this.updateSize();
-			}
-			return InteractionResult.sidedSuccess(this.level().isClientSide);
-		}
 
 		if (owner) {
 			if (!this.level().isClientSide) {
@@ -346,7 +367,6 @@ public class FoxGirlEntity extends TamableAnimal {
 	public void addAdditionalSaveData(CompoundTag tag) {
 		super.addAdditionalSaveData(tag);
 		tag.putInt("FoxHunger", this.hunger);
-		tag.putInt("SizeMode", this.sizeMode);
 		tag.putInt("SizeState", this.getSizeState());
 	}
 
@@ -354,7 +374,6 @@ public class FoxGirlEntity extends TamableAnimal {
 	public void readAdditionalSaveData(CompoundTag tag) {
 		super.readAdditionalSaveData(tag);
 		if (tag.contains("FoxHunger")) this.hunger = tag.getInt("FoxHunger");
-		if (tag.contains("SizeMode")) this.sizeMode = tag.getInt("SizeMode");
 		if (tag.contains("SizeState")) {
 			int s = Math.max(0, Math.min(2, tag.getInt("SizeState")));
 			this.entityData.set(SIZE_STATE, s);
